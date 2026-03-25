@@ -13,8 +13,12 @@ async function callCozeWorkflow(workflowId, parameters) {
     {
       headers: { Authorization: `Bearer ${config.coze.apiKey}`, 'Content-Type': 'application/json' },
       timeout: 120000,
+      validateStatus: () => true,
     }
   )
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(`Coze API 请求失败: HTTP ${res.status}`)
+  }
   return res.data
 }
 

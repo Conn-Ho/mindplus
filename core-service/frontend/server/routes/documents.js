@@ -118,7 +118,11 @@ module.exports = async function documentsRoutes(fastify) {
     const doc = await db.prepare('SELECT content_mindmap, owner_id, public_permission FROM documents WHERE id = ?').get(req.params.id)
     if (!doc) return reply.code(404).send(fail('文档不存在', 404))
     if (!getUserPermission(doc, req.user?.id).canAccess) return reply.code(403).send(fail('无访问权限', 403))
-    return ok({ content: doc.content_mindmap ? JSON.parse(doc.content_mindmap) : null })
+    let content = null
+    if (doc.content_mindmap) {
+      try { content = JSON.parse(doc.content_mindmap) } catch { return reply.code(500).send(fail('文档数据损坏')) }
+    }
+    return ok({ content })
   })
 
   // PUT /documents/:id/sheet
@@ -136,7 +140,11 @@ module.exports = async function documentsRoutes(fastify) {
     const doc = await db.prepare('SELECT content_sheet, owner_id, public_permission FROM documents WHERE id = ?').get(req.params.id)
     if (!doc) return reply.code(404).send(fail('文档不存在', 404))
     if (!getUserPermission(doc, req.user?.id).canAccess) return reply.code(403).send(fail('无访问权限', 403))
-    return ok({ snapshot: doc.content_sheet ? JSON.parse(doc.content_sheet) : null })
+    let snapshot = null
+    if (doc.content_sheet) {
+      try { snapshot = JSON.parse(doc.content_sheet) } catch { return reply.code(500).send(fail('文档数据损坏')) }
+    }
+    return ok({ snapshot })
   })
 
   // PUT /documents/:id/page-settings

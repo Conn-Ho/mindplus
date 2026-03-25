@@ -20,7 +20,7 @@ module.exports = async function filesRoutes(fastify) {
     const filePath = path.join(uploadDir, fileName)
 
     const buffer = await data.toBuffer()
-    fs.writeFileSync(filePath, buffer)
+    await fs.promises.writeFile(filePath, buffer)
 
     const publicUrl = `/uploads/${fileName}`
     return ok({ url: publicUrl, filename: fileName, size: buffer.length, mimetype: data.mimetype })
