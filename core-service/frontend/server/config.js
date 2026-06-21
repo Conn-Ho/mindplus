@@ -73,6 +73,13 @@ module.exports = {
     serviceKey: (process.env.MINDUSER_SERVICE_KEY || 'mindplus').toLowerCase(),
   },
 
+  // 核销码统一服务(政府码激活 → 充值钱包)
+  hexiao: {
+    baseUrl: String(process.env.HEXIAO_BASE_URL || '').trim().replace(/\/$/, ''),
+    internalKey: String(process.env.HEXIAO_INTERNAL_KEY || '').trim(),
+    defaultQuota: Number(process.env.MINDPLUS_GOV_QUOTA || 100),
+  },
+
   // Credits billing controls (single price per scene + overdraft)
   billing: {
     enabled: parseBoolean(process.env.BILLING_ENABLED, true),

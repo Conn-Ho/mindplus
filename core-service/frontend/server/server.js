@@ -324,6 +324,9 @@ fastify.get('/health', async () => ({ status: 'ok', time: new Date().toISOString
 // Auth routes: /api/auth/*
 fastify.register(require('./routes/auth'),          { prefix: '/api/auth' })
 
+// 政府核销码兑换 + 追扣回调: /api/redeem/*
+fastify.register(require('./routes/redeem'),        { prefix: '/api/redeem' })
+
 // Presentations: /api/presentations/*
 fastify.register(require('./routes/presentations'), { prefix: '/api/presentations' })
 

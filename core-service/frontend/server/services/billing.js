@@ -623,8 +623,89 @@ async function refundChargeById({ req, chargeId, reason, meta }) {
   }
 }
 
+// ===== 政府核销码:激活(hexiao)→ 充值钱包(MindUser) =====
+
+async function activateGovCodeViaHexiao({ code, userRef }) {
+  const base = String(config.hexiao?.baseUrl || '').trim()
+  const key = String(config.hexiao?.internalKey || '').trim()
+  if (!base || !key) throw createBillingError('核销服务未配置', 500, 'HEXIAO_NOT_CONFIGURED')
+
+  const response = await axios.post(
+    `${base}/activate`,
+    { code, product: 'mindplus', userRef, quota: Number(config.hexiao?.defaultQuota || 100) },
+    { headers: { 'Content-Type': 'application/json', 'x-api-key': key }, proxy: false, timeout: 12000, validateStatus: () => true }
+  )
+  const payload = response?.data || {}
+  if (response.status >= 200 && response.status < 300 && payload.ok) {
+    return { codeId: payload.codeId, grantedQuota: Number(payload.grantedQuota) || 0, status: payload.status }
+  }
+  const map = { activated_by_other: '这个核销码已被其他账号使用。', product_mismatch: '这个核销码不适用于本产品。' }
+  throw createBillingError(
+    map[payload.error] || payload.message || '核销码验证失败。',
+    response.status >= 400 && response.status <= 599 ? response.status : 502,
+    'HEXIAO_ACTIVATE_FAILED'
+  )
+}
+
+// 用政府码作 card_code 充值,靠 MindUser 的 service_key+card_code 唯一约束防重复;409/已充值视为幂等成功。
+async function rechargeWalletByGovCode({ userId, amount, govCode }) {
+  const rechargeAmount = roundCredits(amount)
+  if (!Number.isFinite(rechargeAmount) || rechargeAmount <= 0) return 0
+
+  const serviceKey = resolveBillingServiceKey()
+  const url = buildMindUserUrl(`/api/${serviceKey}/open/recharge`)
+  const cardCode = `GOV-${String(govCode).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48)}`
+
+  const response = await axios.post(
+    url,
+    {
+      uid: userId,
+      cardString: cardCode,
+      faceValue: `政府核销码激活 ${rechargeAmount}`,
+      creditsAmount: rechargeAmount,
+      salePrice: '0',
+      validPeriod: '政府核销',
+      batchNo: 'gov_activation',
+      reason: 'gov_code_activation',
+      sourceRef: String(govCode),
+    },
+    { headers: getInternalHeaders(), proxy: false, timeout: 12000, validateStatus: () => true }
+  )
+  const payload = response?.data || {}
+  if (response.status >= 200 && response.status < 300 && Number(payload?.code) === 200) {
+    return rechargeAmount
+  }
+  if (response.status === 409 || /已充值|重复/.test(String(payload?.message || ''))) {
+    return rechargeAmount // 同码已充过,幂等
+  }
+  throw createBillingError(
+    String(payload?.message || `充值失败（HTTP ${response.status}）`),
+    response.status >= 400 && response.status <= 599 ? response.status : 502,
+    'GOV_RECHARGE_FAILED'
+  )
+}
+
+// 高层:用户用政府码兑换 → 激活 + 充值
+async function redeemGovCode({ req, code }) {
+  const userId = String(req.user?.id || req.user?.uid || '').trim()
+  if (!userId) throw createBillingError('未登录', 401, 'UNAUTHENTICATED')
+  const normalized = String(code || '').trim()
+  if (!normalized) throw createBillingError('请输入核销码', 400, 'MISSING_CODE')
+
+  const act = await activateGovCodeViaHexiao({ code: normalized, userRef: userId })
+  const credited = await rechargeWalletByGovCode({ userId, amount: act.grantedQuota, govCode: normalized })
+  return { grantedQuota: credited, status: act.status }
+}
+
+// 追扣:政府对账判定异常码 → 扣减钱包
+async function clawbackGovCredits({ userId, amount, govCode }) {
+  return consumeWalletCredits({ userId, amount, reason: 'gov_clawback', sourceRef: String(govCode || ''), meta: {} })
+}
+
 module.exports = {
   BILLING_SCENES,
   chargeCreditsForScene,
   refundChargeById,
+  redeemGovCode,
+  clawbackGovCredits,
 }
