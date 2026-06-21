@@ -647,13 +647,19 @@ async function activateGovCodeViaHexiao({ code, userRef }) {
   )
 }
 
+// 同机直连 MindUser(本机 3100),绕开公网域名/nginx 路由问题。
+function buildMindUserInternalUrl(pathname) {
+  const base = String(config.hexiao?.minduserInternalUrl || 'http://127.0.0.1:3100').replace(/\/+$/, '')
+  return new URL(pathname, `${base}/`).toString()
+}
+
 // 用政府码作 card_code 充值,靠 MindUser 的 service_key+card_code 唯一约束防重复;409/已充值视为幂等成功。
 async function rechargeWalletByGovCode({ userId, amount, govCode }) {
   const rechargeAmount = roundCredits(amount)
   if (!Number.isFinite(rechargeAmount) || rechargeAmount <= 0) return 0
 
   const serviceKey = resolveBillingServiceKey()
-  const url = buildMindUserUrl(`/api/${serviceKey}/open/recharge`)
+  const url = buildMindUserInternalUrl(`/api/${serviceKey}/open/recharge`)
   const cardCode = `GOV-${String(govCode).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48)}`
 
   const response = await axios.post(
@@ -697,9 +703,28 @@ async function redeemGovCode({ req, code }) {
   return { grantedQuota: credited, status: act.status }
 }
 
-// 追扣:政府对账判定异常码 → 扣减钱包
+// 追扣:政府对账判定异常码 → 扣减钱包(同机直连 MindUser)
 async function clawbackGovCredits({ userId, amount, govCode }) {
-  return consumeWalletCredits({ userId, amount, reason: 'gov_clawback', sourceRef: String(govCode || ''), meta: {} })
+  const consumeAmount = roundCredits(amount)
+  if (!Number.isFinite(consumeAmount) || consumeAmount <= 0) return 0
+
+  const serviceKey = resolveBillingServiceKey()
+  const url = buildMindUserInternalUrl(`/api/${serviceKey}/open/consume`)
+  const response = await axios.post(
+    url,
+    { uid: userId, amount: consumeAmount, reason: 'gov_clawback', sourceRef: String(govCode || '') },
+    { headers: getInternalHeaders(), proxy: false, timeout: 12000, validateStatus: () => true }
+  )
+  const payload = response?.data || {}
+  if (response.status >= 200 && response.status < 300 && Number(payload?.code) === 200) {
+    const spent = Number(payload?.data?.consume_amount)
+    return Number.isFinite(spent) && spent > 0 ? spent : consumeAmount
+  }
+  throw createBillingError(
+    String(payload?.message || `追扣失败（HTTP ${response.status}）`),
+    response.status >= 400 && response.status <= 599 ? response.status : 502,
+    'GOV_CLAWBACK_FAILED'
+  )
 }
 
 module.exports = {

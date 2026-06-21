@@ -78,6 +78,8 @@ module.exports = {
     baseUrl: String(process.env.HEXIAO_BASE_URL || '').trim().replace(/\/$/, ''),
     internalKey: String(process.env.HEXIAO_INTERNAL_KEY || '').trim(),
     defaultQuota: Number(process.env.MINDPLUS_GOV_QUOTA || 100),
+    // 同机服务间直连 MindUser(绕开公网域名/nginx 路由),默认本机 3100
+    minduserInternalUrl: String(process.env.MINDUSER_INTERNAL_URL || 'http://127.0.0.1:3100').trim().replace(/\/$/, ''),
   },
 
   // Credits billing controls (single price per scene + overdraft)
