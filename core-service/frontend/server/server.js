@@ -68,7 +68,8 @@ function parseBearerToken(authHeader) {
 }
 
 function resolveMindUserAuthUrl() {
-  const baseUrl = String(config.billing?.mindUserBaseUrl || '').trim().replace(/\/+$/, '')
+  // 服务器端校验走同机 MindUser(localhost:3100),公网域名 /api/ 不转发到 minduser。
+  const baseUrl = String(config.hexiao?.minduserInternalUrl || config.billing?.mindUserBaseUrl || '').trim().replace(/\/+$/, '')
   if (!baseUrl) return ''
   const serviceKey = String(config.minduser?.serviceKey || 'mindplus').trim().toLowerCase() || 'mindplus'
   return `${baseUrl}/api/${encodeURIComponent(serviceKey)}/auth/me`
